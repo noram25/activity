@@ -1,0 +1,666 @@
+#!/bin/bash
+script="$(basename "$0")"
+
+about_script(){
+    local version="1.0.0"
+    local updated="2nd April 2026"
+    local creator="Nora Moyer"
+    local copyright="CQI Technologies LLC"
+    local social="https://bsky.app/profile/noram25.bsky.social"
+    local repository="https://github.com/noram25/activity.git"
+    local name="Activity"
+    local description="Get information about your KDE Activities and switch between them"
+    echo "$name v$version   Updated $updated   $0"
+    echo "$description"
+    echo "Created by $creator, $copyright"
+    echo "$repository"
+    echo "$social"
+}
+
+activity_count() {
+    qdbus6 org.kde.ActivityManager /ActivityManager/Activities ListActivities | grep -c .
+}
+
+activity_exists(){
+    if [[ "$1" == "" ]]; then
+        command_error "--activity-exists" "No activity ID or name provided"
+    else
+        if [[ "$(internal_validate_id_format "$1")" == "Valid ID" ]] || [[ "$(internal_validate_name_format "$1")" == "Valid name" ]]; then
+            local ids=$(list_ids)
+            local curr_id="$(current_id)"
+            local active=" "
+
+            while read -r id; do
+                if [[ "$id" == "$curr_id" ]]; then
+                    active="*"
+                else
+                    active=" "
+                fi
+                local name="$(get_name_by_id "$id")"
+                if [[ "$name" == *"$1"* ]] || [[ "$id" == "$1" ]]; then
+                    echo "$active    $id    $name"
+                    return
+                fi
+            done <<< "$ids"
+            echo ""
+        else
+            command_error "--activity-exists" "Invalid ID or name provided"
+        fi
+    fi
+}
+
+activity_info(){
+    local $id="${1,,}"
+    id="$(trim "$id")"
+    local validate="$(internal_validate_id_format "$id")"
+    if [[ "$validate" == "Valid ID" ]]; then
+        echo "Added: $(qdbus6 org.kde.ActivityManager /ActivityManager/Activities ActivityAdded "$id")"
+        echo "Changed: $(qdbus6 org.kde.ActivityManager /ActivityManager/Activities ActivityChanged "$id")"
+        echo "Description: $(qdbus6 org.kde.ActivityManager /ActivityManager/Activities ActivityDescription "$id")"
+        echo "Name: $(qdbus6 org.kde.ActivityManager /ActivityManager/Activities ActivityName "$id")"
+        echo "Icon: $(qdbus6 org.kde.ActivityManager /ActivityManager/Activities ActivityIcon "$id")"
+        echo "Started: $(qdbus6 org.kde.ActivityManager /ActivityManager/Activities ActivityStarted "$id")"
+        echo "State: $(qdbus6 org.kde.ActivityManager /ActivityManager/Activities ActivityState "$id")"
+    else
+        command_error "--activity-info" "$validate"
+    fi
+}
+
+add_activity(){
+    local name="$1"
+    name="$(trim "$name")"
+    local validate="$(internal_validate_name_format "$name")"
+    if [[ "$validate" == "Valid name" ]]; then
+        local ids=$(list_ids)
+        while read -r id; do
+            local name="$(get_name_by_id "$id")"
+            if [[ "$name" == "$name" ]]; then
+                command_error "--add-activity" "Activity with '$name' already exists"
+                return
+            fi
+        done <<< "$ids"
+        qdbus6 org.kde.ActivityManager /ActivityManager/Activities AddActivity "$name"
+    else
+        command_error "--add-activity" "$validate"
+    fi
+}
+
+command_error(){
+    local command="$command"
+    local error="$2"
+
+    local description=""
+    local example=""
+    if [[ "$command" == "--activity-exists" ]]; then
+        description="Checks if an activity exists with the ID or approximate name. If found, returns info about it"
+        example="$script $command 'ffed83a0-84c4-4600-97a3-6d2f2c31d8a8'"
+    elif [[ "$command" == "--activity-info" ]]; then
+        description="Displays the common details of the provided ID"
+        example="$script $command'ffed83a0-84c4-4600-97a3-6d2f2c31d8a8'"
+    elif [[ "$command" == "--add-activity" ]]; then
+        description="Creates a new activity and returns the ID"
+        example="$script $command NewActivityName"
+    elif [[ "$command" == "--current-id" ]]; then
+        description="Displays the ID of the current activity"
+        example="$script $command"
+    elif [[ "$command" == "--current-name" ]]; then
+        description="Displays the name of the current activity"
+        example="$script $command"
+    elif [[ "$command" == "--export-activities-list" ]]; then
+        description="Exports the ID and name of every activity on the system"
+        example="$script $command './activities.csv'"
+    elif [[ "$command" == "--get-id-by-index" ]]; then
+        description="Displays the ID of the activity with the provided 1-based index (n-th activity)"
+        example="$script $command 4"
+    elif [[ "$command" == "--get-id-by-name" ]]; then
+        description="Displays the ID of the activity with the provided name"
+        example="$script $command 'Programming'"
+    elif [[ "$command" == "--get-name-by-id" ]]; then
+        description="Displays the name of the activity with the provided ID"
+        example="$script $command 'ffed83a0-84c4-4600-97a3-6d2f2c31d8a8'"
+    elif [[ "$command" == "--get-name-by-index" ]]; then
+        description="Displays the name of the activity with the provided 1-based index (n-th activity)"
+        example="$script $command 4"
+    elif [[ "$command" == "--list-ids" ]]; then
+        description="Displays a list of activity IDs"
+        example="$script $command"
+    elif [[ "$command" == "--list-names" ]]; then
+        description="Displays a list of activity names"
+        example="$script $command"
+    elif [[ "$command" == "--next" ]]; then
+        description="Switches to the next activity in the"
+        example="$script $command"
+    elif [[ "$command" == "--previous" ]]; then
+        description="Switches to the previous activity in the list"
+        example="$script $command"
+    elif [[ "$command" == "--remove-activity" ]]; then
+        description="Removes the activity with the provided ID"
+        example="$script $command 'ffed83a0-84c4-4600-97a3-6d2f2c31d8a8'"
+    elif [[ "$command" == "--set-description" ]]; then
+        description="Set the description of the activity with the provided ID"
+        example="$script $command 'ffed83a0-84c4-4600-97a3-6d2f2c31d8a8' 'My description'"
+    elif [[ "$command" == "--set-icon" ]]; then
+        description="Set the full path of the icon for the activity with the provided ID"
+        example="$script $command 'ffed83a0-84c4-4600-97a3-6d2f2c31d8a8' '/full/path/to/file.png'"
+    elif [[ "$command" == "--set-name" ]]; then
+        description="Set the name of the activity with the provided ID"
+        example="$script $command 'ffed83a0-84c4-4600-97a3-6d2f2c31d8a8' 'Main'"
+    elif [[ "$command" == "--show-table" ]]; then
+        description="Displays a table showing the activies, their 'active' state and name"
+        example="$script $command"
+    elif [[ "$command" == "--slideshow" ]]; then
+        description="Displays each activity in rotation with a given pause and loop count and returns to the original activity"
+        example="$script $command 5 1"
+    elif [[ "$command" == "--start-activity" ]]; then
+        description="Starts the activity matching the provided ID"
+        example="$script $command 'ffed83a0-84c4-4600-97a3-6d2f2c31d8a8'"
+    elif [[ "$command" == "--stop-activity" ]]; then
+        description="Starts the activity matching the provided ID"
+        example="$script $command 'ffed83a0-84c4-4600-97a3-6d2f2c31d8a8'"
+    elif [[ "$command" == "--switch-by-id" ]]; then
+        description="Switches to the activity matching a provided ID"
+        example="$script $command 'ffed83a0-84c4-4600-97a3-6d2f2c31d8a8'"
+    elif [[ "$command" == "--switch-by-index" ]]; then
+        description="Switches to the activity with the provided 1-based index (n-th activity)"
+        example="$script $command 4"
+    elif [[ "$command" == "--switch-by-name" ]]; then
+        description="Switches to the activity matching a provided name"
+        example="$script $command 'Programming'"
+    elif [[ "$command" == "--validate-id-format" ]]; then
+        description="Checks the format of the provided ID and returns 'Valid ID' or 'Invalid ID'"
+        example="$script $command 'ffed83a0-84c4-4600-97a3-6d2f2c31d8a8'"
+    else
+        man activity
+        return 0
+    fi
+
+    if [[ "$error" != "--help" ]]; then
+        # This was a problem running a command, not a request for help
+        echo "Error: $error"
+    fi
+    echo "Description: $description"
+    echo "Example: $example"
+}
+
+current_id(){
+    qdbus6 org.kde.ActivityManager /ActivityManager/Activities CurrentActivity
+}
+
+current_name(){
+    get_name_by_id "$(current_id)"
+}
+
+detect_flags(){
+    local command="${1,,}"
+    command="$(trim "$command")"
+    local param1="$(trim "$2")"
+    local param2="$(trim "$3")"
+
+    ## Usage requests
+    if [[ "${param1,,}" == "--help" ]] || [[ "${param1,,}" == "-h" ]]  || [[ "$param1" == "?" ]]; then
+        command_error "$command" "--help"
+        return
+    fi
+
+    ## Action requests
+    if [[ "$command" == "--about" ]]; then
+        about_script
+    elif [[ "$command" == "--activity-exists" ]]; then
+            activity_exists "$param1"
+    elif [[ "$command" == "--activity-info" ]]; then
+            activity_info "$param1"
+    elif [[ "$command" == "--add-activity" ]]; then
+            add_activity "$param1"
+    elif [[ "$command" == "--current-id" ]]; then
+            current_id
+    elif [[ "$command" == "--current-name" ]]; then
+            current_name
+    elif [[ "$command" == "--export-activities-list" ]]; then
+            export_activities_list "$param1"
+    elif [[ "$command" == "--functions" ]]; then
+            functions
+    elif [[ "$command" == "--get-id-by-index" ]]; then
+            get_id_by_index "$param1"
+    elif [[ "$command" == "--get-id-by-name" ]]; then
+            get_id_by_name "$param1"
+    elif [[ "$command" == "--get-name-by-id" ]]; then
+            get_name_by_id "$param1"
+    elif [[ "$command" == "--get-name-by-index" ]]; then
+            get_name_by_index "$param1"
+    elif [[ "$command" == "--list-ids" ]]; then
+            list_ids
+    elif [[ "$command" == "--list-names" ]]; then
+            list_names
+    elif [[ "$command" == "--next" ]]; then
+            next
+    elif [[ "$command" == "--previous" ]]; then
+            previous
+    elif [[ "$command" == "--remove-activity" ]]; then
+            remove_activity "$param1"
+    elif [[ "$command" == "--set-description" ]]; then
+            set_description "$param1" "$param2"
+    elif [[ "$command" == "--set-icon" ]]; then
+            set_icon "$param1" "$param2"
+    elif [[ "$command" == "--set-name" ]]; then
+            set_name "$param1" "$param2"
+    elif [[ "$command" == "--slideshow" ]]; then
+            slideshow "$param1" "$param2"
+    elif [[ "$command" == "--show-table" ]]; then
+            show_table
+    elif [[ "$command" == "--start-activity" ]]; then
+            start_activity "$param1"
+    elif [[ "$command" == "--stop-activity" ]]; then
+            stop_activity "$param1"
+    elif [[ "$command" == "--switch-by-id" ]]; then
+            switch_by_id "$param1"
+    elif [[ "$command" == "--switch-by-name" ]]; then
+            switch_by_name "$param1"
+    elif [[ "$command" == "--switch-by-index" ]]; then
+            switch_by_index "$param1"
+    elif [[ "$command" == "--validate-id-format" ]]; then
+            validate_id_format "$param1"
+    else
+        echo "Function '$command' not found."
+        echo "Type 'man $script' for the manual."
+        echo "Type '$script --functions' for a list of functions."
+    fi
+}
+
+export_activities_list(){
+    local file="${1:-activities_export.csv}"
+
+    echo "ID,NAME,DESCRIPTION,ICON" > "$file"
+    local ids=$(list_ids)
+    local active=" "
+    while read -r id; do
+        local name="$(qdbus6 org.kde.ActivityManager /ActivityManager/Activities ActivityName "$id")"
+        local description="$(qdbus6 org.kde.ActivityManager /ActivityManager/Activities ActivityDescription "$id")"
+        local icon="$(qdbus6 org.kde.ActivityManager /ActivityManager/Activities ActivityIcon "$id")"
+        echo "$id,$name,$description,$icon" >> "$file"
+    done <<< "$(list_ids)"
+}
+
+functions(){
+    echo "(string) --about"
+    echo "(string) --activity-exists 'ID'"
+    echo "(string) --activity-info 'ID'"
+    echo "(string) --add-activity 'name'"
+    echo "(string) --current-id"
+    echo "(string) --current-name"
+    echo "(null)   --export-activities-list 'path'"
+    echo "(null)   --functions"
+    echo "(string) --get-id-by-index 'index'"
+    echo "(string) --get-id-by-name 'name'"
+    echo "(string) --get-name-by-id 'ID'"
+    echo "(string) --get-name-by-index 'index'"
+    echo "(string) --list-ids"
+    echo "(string) --list-names"
+    echo "(null)   --next"
+    echo "(null)   --previous"
+    echo "(string) --remove-activity 'ID'"
+    echo "(null)   --set-description 'ID' 'description'"
+    echo "(null)   --set-icon 'ID' 'path'"
+    echo "(null)   --set-name 'ID' 'name'"
+    echo "(null)   --slideshow 'delay' 'loops'"
+    echo "(string) --show-table"
+    echo "(null)   --start-activity 'ID'"
+    echo "(null)   --stop-activity 'ID'"
+    echo "(null)   --switch-by-id 'ID'"
+    echo "(null)   --switch-by-name 'name'"
+    echo "(null)   --switch-by-index 'index'"
+    echo "(string) --validate-id-format 'ID'"
+}
+
+get_id_by_index(){
+    index="$(trim "$index")"
+    local validate="$(internal_validate_index_format "$index")"
+    if [[ "$validate" == "Valid index" ]]; then
+        local count=0
+        while read -r id; do
+            ((count++))
+            if [[ "$count" -eq "$index" ]]; then
+                echo "$id"
+                return
+            fi
+        done < <(list_ids)
+        echo ""
+    else
+        command_error "--get-id-by-index" "$validate"
+    fi
+}
+
+get_id_by_name(){
+    local name="$(trim "$1")"
+    local validate="$(internal_validate_name_format "$name")"
+    if [[ "$validate" == "Valid name" ]]; then
+        local id=""
+        local ids=$(list_ids)
+        while read -r id; do
+            local found_name="$(get_name_by_id "$id")"
+            if [[ "$found_name" == *"$name"* ]]; then
+                echo "$id"
+                return
+            fi
+        done <<< "$ids"
+        echo ""
+    else
+        command_error "--get-id-by-name" "$validate"
+    fi
+}
+
+get_name_by_id(){
+    local id="${1,,}"
+    id="$(trim "$id")"
+    local validate="$(internal_validate_id_format "$id")"
+    if [[ "$validate" == "Valid ID" ]]; then
+        qdbus6 org.kde.ActivityManager /ActivityManager/Activities ActivityName "$id"
+    else
+        command_error "--get-name-by-id" "$validate"
+    fi
+}
+
+get_name_by_index(){
+    index="$(trim "$1")"
+    local validate="$(internal_validate_id_format "$index")"
+    if [[ "$validate" == "Valid index" ]]; then
+        local name=""
+        local ids=$(list_ids)
+        count=0
+        while read -r id; do
+            count=$((count+1))
+            local name="$(get_name_by_id "$id")"
+            if [[ "$count" == "$index" ]]; then
+                echo "$name"
+                return
+            fi
+        done <<< "$ids"
+        echo ""
+    else
+        command_error "--get-name-by-index" "$validate"
+    fi
+}
+
+internal_validate_id_format(){
+    local id="$1"
+    id="$(trim "$id")"
+    if [[ "$id" == "" ]]; then
+        echo "Missing ID"
+    else
+        if [[ "$id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]; then
+            while read -r iditem; do
+                if [[ "$iditem" == "$id" ]]; then
+                    echo "Valid ID"
+                    return
+                fi
+            done <<< "$(list_ids)"
+            echo "ID does not exist"
+        else
+            echo "Invalid ID"
+        fi
+    fi
+}
+
+internal_validate_index_format(){
+    local index="$1"
+    index="$(trim "$index")"
+    if [[ "$index" == "" ]]; then
+        echo "Missing index"
+    else
+        if [[ "$id" =~ ^[1-9]{1}[0-9]{0,2}$ ]]; then
+            if [[ "$1" -le "$(activity_count)" ]]; then
+                echo "Valid index"
+            else
+                echo "Index out of range"
+            fi
+        else
+            echo "Invalid index"
+        fi
+    fi
+}
+
+internal_validate_name_format(){
+    local name="$1"
+    name="$(trim "$name")"
+    if [[ -z "$name" ]]; then
+        echo "Missing name"
+        return
+    fi
+    if [[ "$name" =~ ^[[:space:]]+$ ]]; then
+        echo "Invalid name (only whitespace)"
+        return
+    fi
+    if [[ "$name" =~ [[:cntrl:]] ]]; then
+        echo "Invalid name (contains control characters)"
+        return
+    fi
+
+    echo "Valid name"
+}
+
+list_ids(){
+    qdbus6 org.kde.ActivityManager /ActivityManager/Activities ListActivities
+}
+
+list_names(){
+    local ids=$(list_ids)
+    while read -r id; do
+        echo "$(get_name_by_id "$id")"
+    done <<< "$ids"
+}
+
+next(){
+    qdbus6 org.kde.ActivityManager /ActivityManager/Activities NextActivity > /dev/null 2>&1
+}
+
+ping(){
+    qdbus6 org.freedesktop.DBus /DBus/Peer Ping
+}
+
+previous(){
+    qdbus6 org.kde.ActivityManager /ActivityManager/Activities PreviousActivity > /dev/null 2>&1
+}
+
+remove_activity(){
+    local ref="$1"
+    ref="$(trim "$ref")"
+    if [[ "$ref" == "" ]]; then
+        command_error "--remove-activity" "No activity ID or name provided"
+    else
+        if [[ "$(internal_validate_id_format "$ref")" == "Valid ID" ]] || [[ "$(internal_validate_name_format "$ref")" == "Valid name" ]]; then
+            local ids=$(list_ids)
+            local curr_id="$(current_id)"
+            local active=" "
+            while read -r id; do
+                if [[ "$id" == "$curr_id" ]]; then
+                    active="*"
+                else
+                    active=" "
+                fi
+                local name="$(get_name_by_id "$id")"
+                if [[ "$name" == "$ref" ]] || [[ "$id" == "$ref" ]]; then
+                    qdbus6 org.kde.ActivityManager /ActivityManager/Activities RemoveActivity "$ref"
+                    echo "$active    $id    $name"
+                    return
+                fi
+            done <<< "$ids"
+            command_error "--remove-activity" "Activity '$ref' not found"
+        else
+            command_error "--remove-activity" "Invalid ID or name provided"
+        fi
+    fi
+}
+
+set_description(){
+    local id="${1,,}"
+    id="$(trim "$id")"
+    local validate="$(internal_validate_id_format "$id")"
+    if [[ "$validate" == "Valid ID" ]]; then
+        qdbus6 org.kde.ActivityManager /ActivityManager/Activities SetActivityDescription "$id" "$2"
+    else
+        command_error "--set-description" "$validate"
+    fi
+}
+
+set_icon(){
+    local id="${1,,}"
+    id="$(trim "$id")"
+    local validate="$(internal_validate_id_format "$id")"
+    if [[ "$validate" == "Valid ID" ]]; then
+        local path="$2"
+        if [[ -f "$path" ]]; then
+            qdbus6 org.kde.ActivityManager /ActivityManager/Activities SetActivityIcon "$id" "$path"
+            if [[ "$(qdbus6 org.kde.ActivityManager /ActivityManager/Activities ActivityIcon "$id")" != "$path" ]]; then
+                command_error "--set-icon" "Could not set icon: '$path'"
+            fi
+        else
+            command_error "--set-icon" "File not found: '$path'"
+        fi
+    else
+        command_error "--set-icon" "$validate"
+    fi
+}
+
+set_name(){
+    local id="${1,,}"
+    id="$(trim "$id")"
+    local validate="$(internal_validate_id_format "$id")"
+    if [[ "$validate" == "Valid ID" ]]; then
+        local name="$2"
+        validate="$(internal_validate_id_format "$name")"
+        if [[ "$validate" == "Valid name" ]]; then
+            qdbus6 org.kde.ActivityManager /ActivityManager/Activities SetActivityName "$id" "$name"
+        else
+            command_error "--set-name" "$validate"
+        fi
+    else
+        command_error "--set-name" "$validate"
+    fi
+}
+
+show_table(){
+    echo "ACT  ID                                      NAME"
+    local ids=$(list_ids)
+    local curr_id="$(current_id)"
+    local active=" "
+    while read -r id; do
+        if [[ "$id" == "$curr_id" ]]; then
+            active="*"
+        else
+            active=" "
+        fi
+        echo "$active    $id    $(get_name_by_id "$id")"
+    done <<< "$ids"
+}
+
+slideshow(){
+    local sleepDelay="${1:-5}"
+    local loops="${2:-1}"
+    local count="$(activity_count)"
+    local current="$(current_id)"
+
+    for ((l=1; l<=loops; l++)); do
+        for ((a=1; a<=count; a++)); do
+            switch_by_index "$a"
+            sleep "$sleepDelay"
+        done        
+    done
+    switch_by_id "$current"
+}
+
+start_activity(){
+    local id="${1,,}"
+    id="$(trim "$id")"
+    local validate="$(internal_validate_id_format "$id")"
+    if [[ "$validate" == "Valid ID" ]]; then
+        qdbus6 org.kde.ActivityManager /ActivityManager/Activities StartActivity  "$id"
+    else
+        command_error "--start-activity" "$validate"
+    fi
+}
+
+stop_activity(){
+    local id="${1,,}"
+    id="$(trim "$id")"
+    local validate="$(internal_validate_id_format "$id")"
+    if [[ "$validate" == "Valid ID" ]]; then
+        qdbus6 org.kde.ActivityManager /ActivityManager/Activities StopActivity  "$id"
+    else
+        command_error "--stop-activity" "$validate"
+    fi
+}
+
+switch_by_id(){
+    local id="${1,,}"
+    id="$(trim "$id")"
+    if [[ "$id" == "" ]]; then
+        command_error "--switch-by-id" "No ID provided"
+    else
+        local validate="$(validate_id_format "$1")"
+        if [[ "$validate" == "Valid ID" ]]; then
+            local prev_id="$(current_id)"
+
+            qdbus6 org.kde.ActivityManager /ActivityManager/Activities SetCurrentActivity "$1" > /dev/null 2>&1
+
+            if [[ "$prev_id" != "$1" && "$prev_id" == "$(current_id)" ]]; then
+                command_error "--switch-by-id" "'$1' not found or switch failed"
+            fi
+        else
+            command_error "--switch-by-id" "$validate"
+        fi
+    fi
+}
+
+switch_by_index(){
+    local index="$(trim "$1")"
+    local validate="$(internal_validate_index_format "$index")"
+    if [[ "$validate" != "Valid index" ]]; then
+        command_error "--switch-by-index" "$validate"
+    else
+        local prev_id="$(current_id)"
+        local id="$(get_id_by_index "$index")"
+
+        switch_by_id "$id"
+
+        if [[ "$prev_id" != "$id" && "$prev_id" == "$(current_id)" ]]; then
+            command_error "--switch-by-index" "'$index' not found or switch failed"
+        fi
+    fi
+}
+
+switch_by_name(){
+    local name="$(trim "$1")"
+    if [[ "$name" == "" ]]; then
+        command_error "--switch-by-name" "No name provided"
+    else
+        local tmp_curr="$(current_id)"
+        local id="$(get_id_by_name $1)"
+        switch_by_id "$id"
+        if [[ "$tmp_curr" != "$name" ]] && [[ "$tmp" == "$(current_id)" ]]; then
+            command_error "--switch-by-name" "'$name' not found or switch failed"
+        fi
+    fi
+}
+
+trim() {
+    local s=$1 LC_CTYPE=C
+    s=${s#"${s%%[![:space:]]*}"}
+    s=${s%"${s##*[![:space:]]}"}
+    printf '%s' "$s"
+}
+
+validate_id_format(){
+    local id="${1,,}"
+    id="$(trim "$id")"
+    if [[ "$id" == "" ]]; then
+        command_error "--validate-id-format" "Missing ID"
+    else
+        if [[ "$id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]; then
+            echo "Valid ID"
+        else
+            echo "Invalid ID"
+        fi
+    fi
+}
+
+ids="$(list_ids)"
+detect_flags "$@"
