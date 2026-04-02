@@ -1,0 +1,191 @@
+.\" Man page for activity - KDE Activity Manager CLI
+.\" Generated for Nora Moyer's Switch Activity script
+.TH activity 1 "30 March 2026" "1.0.0" "User Commands"
+.SH NAME
+activity \- Manage and switch between KDE Plasma Activities from the command line
+.SH SYNOPSIS
+.B activity
+[\fIOPTION\fR] [\fIARGUMENTS\fR]
+.SH DESCRIPTION
+\fBactivity\fR provides a command-line interface to KDE Plasma's Activity Manager. It allows you to list, create, modify, switch between, and manage activities from the terminal. Activities are workspaces that can have their own set of open applications, virtual desktops, and settings, allowing you to organize your workflow by task or context.
+
+All commands accept \fB--help\fR, \fB-h\fR, or \fB?\fR as an argument to display detailed usage information.
+
+.SH OPTIONS
+.SS "Information and Status"
+.TP
+\fB--about\fR
+Display script version, creator information, and copyright details.
+.TP
+\fB--current-id\fR
+Output the UUID of the currently active activity.
+.TP
+\fB--current-name\fR
+Output the name of the currently active activity.
+.TP
+\fB--list-ids\fR
+List all activity UUIDs, one per line.
+.TP
+\fB--list-names\fR
+List all activity names, one per line.
+.TP
+\fB--show-table\fR
+Display a formatted table showing all activities with an asterisk (*) indicating the current active activity.
+.TP
+\fB--activity-exists\fR \fIID\fR|\fINAME\fR
+Check if an activity exists with the given UUID or approximate name. If found, displays a line with active status, UUID, and name.
+.TP
+\fB--activity-info\fR \fIID\fR
+Display detailed information about a specific activity, including when it was added, last changed, description, name, icon, start time, and current state.
+
+.SS "Finding Activities"
+.TP
+\fB--get-id-by-name\fR \fINAME\fR
+Retrieve the UUID of an activity by its name. Partial name matches are supported.
+.TP
+\fB--get-name-by-id\fR \fIID\fR
+Retrieve the name of an activity by its UUID.
+.TP
+\fB--get-id-by-index\fR \fIN\fR
+Retrieve the UUID of the Nth activity (1-based indexing as ordered by the Activity Manager).
+.TP
+\fB--get-name-by-index\fR \fIN\fR
+Retrieve the name of the Nth activity (1-based indexing).
+
+.SS "Switching Activities"
+.TP
+\fB--switch-by-id\fR \fIID\fR
+Switch to the activity specified by its UUID.
+.TP
+\fB--switch-by-name\fR \fINAME\fR
+Switch to the activity matching the given name.
+.TP
+\fB--switch-by-index\fR \fIN\fR
+Switch to the Nth activity (1-based indexing).
+.TP
+\fB--next\fR
+Switch to the next activity in the list.
+.TP
+\fB--previous\fR
+Switch to the previous activity in the list.
+
+.SS "Managing Activities"
+.TP
+\fB--add-activity\fR \fINAME\fR
+Create a new activity with the specified name. Returns the newly created activity's UUID.
+.TP
+\fB--remove-activity\fR \fIID\fR|\fINAME\fR
+Remove an activity by UUID or name.
+.TP
+\fB--set-name\fR \fIID\fR \fINAME\fR
+Rename an existing activity.
+.TP
+\fB--set-description\fR \fIID\fR \fIDESCRIPTION\fR
+Set or update the description for an activity.
+.TP
+\fB--set-icon\fR \fIID\fR \fIPATH\fR
+Set the icon for an activity. \fIPATH\fR must be the full path to an image file.
+.TP
+\fB--start-activity\fR \fIID\fR
+Start an activity that may be stopped.
+.TP
+\fB--stop-activity\fR \fIID\fR
+Stop a running activity.
+
+.SS "Data Export and Presentation"
+.TP
+\fB--export-activities-list\fR [\fIFILE\fR]
+Export all activities to a CSV file. If no filename is specified, defaults to \fIactivities_export.csv\fR. Output includes ID, name, description, and icon path.
+.TP
+\fB--slideshow\fR [\fIPAUSE\fR] [\fILOOPS\fR]
+Display each activity in rotation. \fIPause\fR is the number of seconds to stay on each activity (default: 5). \fILoops\fR is the number of times to cycle through all activities (default: 1). Returns to the original activity when finished.
+
+.SS "Validation"
+.TP
+\fB--validate-id-format\fR \fIID\fR
+Check if the provided string is a properly formatted KDE Activity UUID. Returns "Valid ID" or "Invalid ID".
+
+.SH EXIT STATUS
+.TP
+0
+Success.
+.TP
+1
+Error occurred (invalid arguments, activity not found, etc.).
+
+.SH EXAMPLES
+.PP
+\fBDisplay current activity\fR
+.RS
+$ activity --current-name
+.br
+$ activity --current-id
+.RE
+.PP
+\fBList all activities\fR
+.RS
+$ activity --show-table
+.RE
+.PP
+\fBSwitch to an activity by name\fR
+.RS
+$ activity --switch-by-name "Development"
+.RE
+.PP
+\fBSwitch to the next activity\fR
+.RS
+$ activity --next
+.RE
+.PP
+\fBAdd a new activity\fR
+.RS
+$ activity --add-activity "Research"
+.RE
+.PP
+\fBGet detailed information about an activity\fR
+.RS
+$ activity --activity-info ffed83a0-84c4-4600-97a3-6d2f2c31d8a8
+.RE
+.PP
+\fBExport all activities to a file\fR
+.RS
+$ activity --export-activities-list my_activities.csv
+.RE
+.PP
+\fBPreview all activities (5 seconds each)\fR
+.RS
+$ activity --slideshow 5
+.RE
+
+.SH NOTES
+.PP
+\fBUUID Format:\fR
+KDE Activity IDs follow the UUID version 4 format: 
+\(lqxxxxxxxx-xxxx-4xxx-[89ab]xxx-xxxxxxxxxxxx\(rq
+.PP
+\fBDependencies:\fR
+This script requires \fBqdbus6\fR (part of KDE Frameworks) to communicate with the KDE Activity Manager. Ensure it is installed and available in your PATH.
+.PP
+\fBPartial Name Matching:\fR
+Several commands (such as \fB--activity-exists\fR and \fB--get-id-by-name\fR) support partial name matching. If multiple activities match, the first match is returned.
+.PP
+\fBCurrent Activity Marking:\fR
+In table output and activity existence checks, an asterisk (*) in the first column indicates the currently active activity.
+
+.SH BUGS
+Report bugs or issues to the script author at the social media link provided in \fB--about\fR output.
+
+.SH AUTHOR
+Nora Moyer
+.br
+CQI Technologies LLC
+.br
+\fIhttps://bsky.app/profile/noram25.bsky.social\fR
+
+.SH COPYRIGHT
+Copyright \(co 2026 CQI Technologies LLC. All rights reserved.
+
+.SH SEE ALSO
+\fBqdbus6\fR(1), \fBkactivities-cli\fR(1)
+.br
+KDE Plasma documentation: \fIhttps://userbase.kde.org/Plasma/Activities\fR
