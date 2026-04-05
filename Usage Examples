@@ -1,0 +1,17 @@
+# Show current activity
+activity --current-name
+
+# List all activities
+activity --show-table
+
+# Switch to an activity by name (with safety preview)
+activity --dry-run --switch-by-name "Development"
+
+# Actually switch
+activity --switch-by-name "Development"
+
+# Export all activities to JSON
+activity --export-activities-json ~/activities.json
+
+# Cycle through activities (5 seconds each)
+activity --slideshow 5 1
