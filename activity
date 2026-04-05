@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION="1.1.0"
+VERSION="1.1.1"
 UPDATED="4th April 2026"
 CREATOR="Nora Moyer"
 COPYRIGHT="CQI Technologies LLC"
@@ -9,7 +9,6 @@ REPOSITORY="https://github.com/noram25/activity.git"
 NAME="Activity"
 DESCRIPTION="Get information about your KDE Activities and switch between them"
 
-
 set -o errexit   # exit on error
 set -o nounset   # error on undefined variables
 set -o pipefail  # pipelines fail if any command fails
@@ -17,6 +16,7 @@ set -o pipefail  # pipelines fail if any command fails
 command -v qdbus6 >/dev/null 2>&1 || { echo "Missing qdbus6"; exit 1; }
 
 script="$(basename "$0")"
+DRY_RUN=false
 
 about_script(){
     echo "$NAME v$VERSION   Updated $UPDATED   $0"
@@ -92,6 +92,10 @@ add_activity(){
                 return 0
             fi
         done <<< "$ids"
+        if [[ "$DRY_RUN" == true ]]; then
+            echo "[DRY RUN] Would add activity: $name"
+            return 0
+        fi
         qdbus6 org.kde.ActivityManager /ActivityManager/Activities AddActivity "$name"
     else
         command_error "--add-activity" "$validate"
@@ -222,6 +226,15 @@ current_name(){
 detect_flags(){
     local command="${1,,}"
     command="$(trim "$command")"
+
+    if [[ "$command" == "--dry-run" ]] || [[ "$command" == "-n" ]]; then
+        DRY_RUN=true
+        shift  # Remove it from arguments
+        # Recursively call detect_flags with remaining args
+        detect_flags "$@"
+        return $?
+    fi
+
     local param1="$(trim "$2")"
     local param2="$(trim "$3")"
 
@@ -240,7 +253,7 @@ detect_flags(){
         --current-id) current_id ;;
         --current-name) current_name ;;
         --export-activities-csv) export_activities_csv "$param1" ;;
-        --export-activities-json") export_activities_csv "$param1" ;;
+        --export-activities-json) export_activities_json "$param1" ;;
         --functions) functions ;;
         --get-id-by-index) get_id_by_index "$param1" ;;
         --get-id-by-name) get_id_by_name "$param1" ;;
@@ -248,7 +261,7 @@ detect_flags(){
         --get-name-by-index) get_name_by_index "$param1" ;;
         --list-ids) list_ids ;;
         --list-names) list_names ;;
-        --meta) echo "Version: $VERSION"; echo "Updated: $UPDATED" echo "Repository: $REPOSITORY" ;;
+        --meta) echo "Version: $VERSION"; echo "Updated: $UPDATED"; echo "Repository: $REPOSITORY" ;;
         --next) next ;;
         --previous) previous ;;
         --remove-activity) remove_activity "$param1" ;;
@@ -277,6 +290,10 @@ export_activities_csv(){
     echo "ID,NAME,DESCRIPTION,ICON" > "$file"
     local ids=$(list_ids)
     local active=" "
+    if [[ "$DRY_RUN" == true ]]; then
+        echo "[DRY RUN] Would create export file: $file"
+        return 0
+    fi
     while read -r id; do
         local name="$(qdbus6 org.kde.ActivityManager /ActivityManager/Activities ActivityName "$id")"
         local description="$(qdbus6 org.kde.ActivityManager /ActivityManager/Activities ActivityDescription "$id")"
@@ -291,9 +308,16 @@ export_activities_csv(){
 
 export_activities_json(){
     local file="${1:-activities_export.json}"
-
+    if [[ "$DRY_RUN" == true ]]; then
+        echo "[DRY RUN] Would create export file: $file"
+        return 0
+    fi
     echo "{\"activities\": [" > "$file"
+    local ids=$(list_ids)
     while read -r id; do
+        local name="$(qdbus6 org.kde.ActivityManager /ActivityManager/Activities ActivityName "$id")"
+        local description="$(qdbus6 org.kde.ActivityManager /ActivityManager/Activities ActivityDescription "$id")"
+        local icon="$(qdbus6 org.kde.ActivityManager /ActivityManager/Activities ActivityIcon "$id")"
         printf '{"id":"%s","name":"%s","description":"%s","icon":"%s"},\n' \
           "$id" "$name" "$description" "$icon"
     done <<< "$ids" >> "$file"
@@ -337,7 +361,7 @@ functions(){
 }
 
 get_id_by_index(){
-    index="$(trim "$index")"
+    local index="$(trim "$1")"
     local validate="$(internal_validate_index_format "$index")"
     if [[ "$validate" == "Valid index" ]]; then
         local count=0
@@ -410,15 +434,6 @@ get_name_by_index(){
         command_error "--get-name-by-index" "$validate"
         return 1
     fi
-}
-
-function import_activities(){
-    # Accepts either CSV or JSON files
-    # Creates activities as needed (or overwrite existing activities if the ID or name is exactly the same)
-    # Will assign the names, descriptions, and if possible, the icons
-    local filepath="$1"
-    echo "Function pending. Not implimented into flags."
-    return 2
 }
 
 internal_validate_id_format(){
@@ -497,6 +512,10 @@ list_names(){
 }
 
 next(){
+    if [[ "$DRY_RUN" == true ]]; then
+        echo "[DRY RUN] Would switch to the next activity"
+        return 0
+    fi
     qdbus6 org.kde.ActivityManager /ActivityManager/Activities NextActivity > /dev/null 2>&1
 }
 
@@ -505,6 +524,10 @@ ping(){
 }
 
 previous(){
+    if [[ "$DRY_RUN" == true ]]; then
+        echo "[DRY RUN] Would switch to the previous activity"
+        return 0
+    fi
     qdbus6 org.kde.ActivityManager /ActivityManager/Activities PreviousActivity > /dev/null 2>&1
 }
 
@@ -527,6 +550,10 @@ remove_activity(){
                 fi
                 local name="$(get_name_by_id "$id")"
                 if [[ "$name" == "$ref" ]] || [[ "$id" == "$ref" ]]; then
+                    if [[ "$DRY_RUN" == true ]]; then
+                        echo "[DRY RUN] Would remove activity: $ref"
+                        return 0
+                    fi
                     qdbus6 org.kde.ActivityManager /ActivityManager/Activities RemoveActivity "$ref"
                     echo "$active    $id    $name"
                     return 0
@@ -546,7 +573,11 @@ set_description(){
     id="$(trim "$id")"
     local validate="$(internal_validate_id_format "$id")"
     if [[ "$validate" == "Valid ID" ]]; then
-        qdbus6 org.kde.ActivityManager /ActivityManager/Activities SetActivityDescription "$id" "$2"
+    if [[ "$DRY_RUN" == true ]]; then
+        echo "[DRY RUN] Would set the description for activity: $id, $2"
+        return 0
+    fi
+    qdbus6 org.kde.ActivityManager /ActivityManager/Activities SetActivityDescription "$id" "$2"
         return 0
     else
         command_error "--set-description" "$validate"
@@ -561,6 +592,10 @@ set_icon(){
     if [[ "$validate" == "Valid ID" ]]; then
         local path="$2"
         if [[ -f "$path" ]]; then
+            if [[ "$DRY_RUN" == true ]]; then
+                echo "[DRY RUN] Would set the icon for activity: $id, $path"
+                return 0
+            fi
             qdbus6 org.kde.ActivityManager /ActivityManager/Activities SetActivityIcon "$id" "$path"
             if [[ "$(qdbus6 org.kde.ActivityManager /ActivityManager/Activities ActivityIcon "$id")" != "$path" ]]; then
                 command_error "--set-icon" "Could not set icon: '$path'"
@@ -585,6 +620,10 @@ set_name(){
         local name="$2"
         validate="$(internal_validate_name_format "$name")"
         if [[ "$validate" == "Valid name" ]]; then
+            if [[ "$DRY_RUN" == true ]]; then
+                echo "[DRY RUN] Would set the name for activity: $id, $name"
+                return 0
+            fi
             qdbus6 org.kde.ActivityManager /ActivityManager/Activities SetActivityName "$id" "$name"
             return 0
         else
@@ -639,7 +678,11 @@ start_activity(){
     id="$(trim "$id")"
     local validate="$(internal_validate_id_format "$id")"
     if [[ "$validate" == "Valid ID" ]]; then
-        qdbus6 org.kde.ActivityManager /ActivityManager/Activities StartActivity  "$id"
+    if [[ "$DRY_RUN" == true ]]; then
+        echo "[DRY RUN] Would start activity: $id"
+        return 0
+    fi
+    qdbus6 org.kde.ActivityManager /ActivityManager/Activities StartActivity  "$id"
         return 0
     else
         command_error "--start-activity" "$validate"
@@ -652,6 +695,10 @@ stop_activity(){
     id="$(trim "$id")"
     local validate="$(internal_validate_id_format "$id")"
     if [[ "$validate" == "Valid ID" ]]; then
+        if [[ "$DRY_RUN" == true ]]; then
+            echo "[DRY RUN] Would stop activity: $id"
+            return 0
+        fi
         qdbus6 org.kde.ActivityManager /ActivityManager/Activities StopActivity  "$id"
         return 0
     else
@@ -671,6 +718,10 @@ switch_by_id(){
         if [[ "$validate" == "Valid ID" ]]; then
             local prev_id="$(current_id)"
 
+            if [[ "$DRY_RUN" == true ]]; then
+                echo "[DRY RUN] Would switch to activity: $id"
+                return 0
+            fi
             qdbus6 org.kde.ActivityManager /ActivityManager/Activities SetCurrentActivity "$1" > /dev/null 2>&1
 
             if [[ "$prev_id" != "$1" && "$prev_id" == "$(current_id)" ]]; then
