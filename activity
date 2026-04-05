@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION="1.1.1"
+VERSION="1.1.2.0" # Versioning Style = Paradigms.Features.Bugs.Typos
 UPDATED="4th April 2026"
 CREATOR="Nora Moyer"
 COPYRIGHT="CQI Technologies LLC"
@@ -227,8 +227,14 @@ detect_flags(){
     local command="${1,,}"
     command="$(trim "$command")"
 
-    local param1="$(trim "$2")"
-    local param2="$(trim "$3")"
+    local param1=""
+    local param2=""
+    if [[ $# -ge 2 ]]; then
+        param1="$(trim "$2")"
+    fi
+    if [[ $# -ge 3 ]]; then
+        param2="$(trim "$3")"
+    fi
 
     ## Usage requests
     if [[ "${param1,,}" == "--help" ]] || [[ "${param1,,}" == "-h" ]]  || [[ "$param1" == "?" ]]; then
@@ -247,6 +253,7 @@ detect_flags(){
         --export-activities-csv) export_activities_csv "$param1" ;;
         --export-activities-json) export_activities_json "$param1" ;;
         --functions) functions ;;
+        --help|-h) help ;;
         --get-id-by-index) get_id_by_index "$param1" ;;
         --get-id-by-name) get_id_by_name "$param1" ;;
         --get-name-by-id) get_name_by_id "$param1" ;;
@@ -425,6 +432,26 @@ get_name_by_index(){
         command_error "--get-name-by-index" "$validate"
         return 1
     fi
+}
+
+help(){
+    echo "List of available flags:"
+    echo ""
+    functions
+    echo ""
+    echo "You can also type 'man $script' to view the manual"
+    echo "Most commands are non-interactive by design. Use --slideshow for"
+    echo "automated cycling. You must also include the activity reference"
+    echo "for any action that has significant risk of system modification."
+    echo "These are intentional safety measures. You can view the table of"
+    echo "activities on your system by '$script --show-table'. This will"
+    echo "show you the exact name and ID of each activity along with a '*'"
+    echo "for the one you are currently using."
+    echo ""
+    echo "You can re-visit the list of available flags at any time by"
+    echo "entering '$script --functions'."
+    echo "Use --dry-run (or -n) to preview any destructive action without"
+    echo "applying changes."
 }
 
 internal_validate_id_format(){
