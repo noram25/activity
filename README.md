@@ -2,6 +2,15 @@
 
 A command-line tool to manage KDE Activities with safety features.
 
+## Quick Start
+
+```bash
+# Show all your activities
+activity --show-table
+
+# Switch to an activity by name
+activity --switch-by-name "Main"
+
 ## Features
 
 - Switch between activities by ID, name, or index
