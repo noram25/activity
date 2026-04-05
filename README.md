@@ -23,3 +23,7 @@ A command-line tool to manage KDE Activities with safety features.
 # Download to your PATH
 curl -o ~/.local/bin/activity https://raw.githubusercontent.com/noram25/activity/main/activity
 chmod +x ~/.local/bin/activity
+
+# Download and install the manual page
+sudo curl -o /usr/local/share/man/man1/activity.1 https://raw.githubusercontent.com/noram25/activity/main/activity.1
+sudo mandb
