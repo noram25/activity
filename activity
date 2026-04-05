@@ -1,5 +1,15 @@
 #!/bin/bash
 
+VERSION="1.1.0"
+UPDATED="4th April 2026"
+CREATOR="Nora Moyer"
+COPYRIGHT="CQI Technologies LLC"
+SOCIAL="https://bsky.app/profile/noram25.bsky.social"
+REPOSITORY="https://github.com/noram25/activity.git"
+NAME="Activity"
+DESCRIPTION="Get information about your KDE Activities and switch between them"
+
+
 set -o errexit   # exit on error
 set -o nounset   # error on undefined variables
 set -o pipefail  # pipelines fail if any command fails
@@ -9,19 +19,11 @@ command -v qdbus6 >/dev/null 2>&1 || { echo "Missing qdbus6"; exit 1; }
 script="$(basename "$0")"
 
 about_script(){
-    local version="1.1.0"
-    local updated="4th April 2026"
-    local creator="Nora Moyer"
-    local copyright="CQI Technologies LLC"
-    local social="https://bsky.app/profile/noram25.bsky.social"
-    local repository="https://github.com/noram25/activity.git"
-    local name="Activity"
-    local description="Get information about your KDE Activities and switch between them"
-    echo "$name v$version   Updated $updated   $0"
-    echo "$description"
-    echo "Created by $creator, $copyright"
-    echo "$repository"
-    echo "$social"
+    echo "$NAME v$VERSION   Updated $UPDATED   $0"
+    echo "$DESCRIPTION"
+    echo "Created by $CREATOR, $COPYRIGHT"
+    echo "$REPOSITORY"
+    echo "$SOCIAL"
 }
 
 activity_count() {
@@ -82,7 +84,7 @@ add_activity(){
     name="$(trim "$name")"
     local validate="$(internal_validate_name_format "$name")"
     if [[ "$validate" == "Valid name" ]]; then
-        local ids=$(list_ids)
+        local ids="$(list_ids)"
         while read -r id; do
             local name="$(get_name_by_id "$id")"
             if [[ "$name" == "$name" ]]; then
@@ -98,7 +100,8 @@ add_activity(){
 }
 
 command_error(){
-    local command="$command"
+    local command="${1,,}"
+    command="$(trim "$command")"
     local error="$2"
 
     local description=""
@@ -118,8 +121,11 @@ command_error(){
     elif [[ "$command" == "--current-name" ]]; then
         description="Displays the name of the current activity"
         example="$script $command"
-    elif [[ "$command" == "--export-activities-list" ]]; then
-        description="Exports the ID and name of every activity on the system"
+    elif [[ "$command" == "--export-activities-csv" ]]; then
+        description="Exports the ID and name of every activity on the system into CSV format"
+        example="$script $command './activities.csv'"
+    elif [[ "$command" == "--export-activities-json" ]]; then
+        description="Exports the ID and name of every activity on the system into JSON format"
         example="$script $command './activities.csv'"
     elif [[ "$command" == "--get-id-by-index" ]]; then
         description="Displays the ID of the activity with the provided 1-based index (n-th activity)"
@@ -194,6 +200,17 @@ command_error(){
     echo "Example: $example"
 }
 
+csv_escape() {
+    local s="$1"
+    # If it contains delimiter, quotes, or newlines, wrap in quotes and escape internal quotes
+    if [[ "$s" =~ [\",$'\n'] ]]; then
+        s="${s//\"/\"\"}"  # double existing quotes
+        printf '"%s"' "$s"
+    else
+        printf '%s' "$s"
+    fi
+}
+
 current_id(){
     qdbus6 org.kde.ActivityManager /ActivityManager/Activities CurrentActivity
 }
@@ -215,72 +232,46 @@ detect_flags(){
     fi
 
     ## Action requests
-    if [[ "$command" == "--about" ]]; then
-        about_script
-    elif [[ "$command" == "--activity-exists" ]]; then
-        activity_exists "$param1"
-    elif [[ "$command" == "--activity-info" ]]; then
-        activity_info "$param1"
-    elif [[ "$command" == "--add-activity" ]]; then
-        add_activity "$param1"
-    elif [[ "$command" == "--current-id" ]]; then
-        current_id
-    elif [[ "$command" == "--current-name" ]]; then
-        current_name
-    elif [[ "$command" == "--export-activities-list" ]]; then
-        export_activities_list "$param1"
-    elif [[ "$command" == "--functions" ]]; then
-        functions
-    elif [[ "$command" == "--get-id-by-index" ]]; then
-        get_id_by_index "$param1"
-    elif [[ "$command" == "--get-id-by-name" ]]; then
-        get_id_by_name "$param1"
-    elif [[ "$command" == "--get-name-by-id" ]]; then
-        get_name_by_id "$param1"
-    elif [[ "$command" == "--get-name-by-index" ]]; then
-        get_name_by_index "$param1"
-    elif [[ "$command" == "--list-ids" ]]; then
-        list_ids
-    elif [[ "$command" == "--list-names" ]]; then
-        list_names
-    elif [[ "$command" == "--next" ]]; then
-        next
-    elif [[ "$command" == "--previous" ]]; then
-        previous
-    elif [[ "$command" == "--remove-activity" ]]; then
-        remove_activity "$param1"
-    elif [[ "$command" == "--set-description" ]]; then
-        set_description "$param1" "$param2"
-    elif [[ "$command" == "--set-icon" ]]; then
-        set_icon "$param1" "$param2"
-    elif [[ "$command" == "--set-name" ]]; then
-        set_name "$param1" "$param2"
-    elif [[ "$command" == "--slideshow" ]]; then
-        slideshow "$param1" "$param2"
-    elif [[ "$command" == "--show-table" ]]; then
-        show_table
-    elif [[ "$command" == "--start-activity" ]]; then
-        start_activity "$param1"
-    elif [[ "$command" == "--stop-activity" ]]; then
-        stop_activity "$param1"
-    elif [[ "$command" == "--switch-by-id" ]]; then
-        switch_by_id "$param1"
-    elif [[ "$command" == "--switch-by-name" ]]; then
-        switch_by_name "$param1"
-    elif [[ "$command" == "--switch-by-index" ]]; then
-        switch_by_index "$param1"
-    elif [[ "$command" == "--validate-id-format" ]]; then
-        validate_id_format "$param1"
-    else
-        echo "Function '$command' not found."
-        echo "Type 'man $script' for the manual."
-        echo "Type '$script --functions' for a list of functions."
-        return 1
-    fi
+    case "$command" in
+        --about) about_script ;;
+        --activity-exists) activity_exists "$param1" ;;
+        --activity-info) activity_info "$param1" ;;
+        --add-activity) add_activity "$param1" ;;
+        --current-id) current_id ;;
+        --current-name) current_name ;;
+        --export-activities-csv) export_activities_csv "$param1" ;;
+        --export-activities-json") export_activities_csv "$param1" ;;
+        --functions) functions ;;
+        --get-id-by-index) get_id_by_index "$param1" ;;
+        --get-id-by-name) get_id_by_name "$param1" ;;
+        --get-name-by-id) get_name_by_id "$param1" ;;
+        --get-name-by-index) get_name_by_index "$param1" ;;
+        --list-ids) list_ids ;;
+        --list-names) list_names ;;
+        --meta) echo "Version: $VERSION"; echo "Updated: $UPDATED" echo "Repository: $REPOSITORY" ;;
+        --next) next ;;
+        --previous) previous ;;
+        --remove-activity) remove_activity "$param1" ;;
+        --repository) echo "$REPOSITORY" ;;
+        --set-description) set_description "$param1" "$param2" ;;
+        --set-icon) set_icon "$param1" "$param2" ;;
+        --set-name) set_name "$param1" "$param2" ;;
+        --slideshow) slideshow "$param1" "$param2" ;;
+        --show-table) show_table ;;
+        --start-activity) start_activity "$param1" ;;
+        --stop-activity) stop_activity "$param1" ;;
+        --switch-by-id) switch_by_id "$param1" ;;
+        --switch-by-name) switch_by_name "$param1" ;;
+        --switch-by-index) switch_by_index "$param1" ;;
+        --updated) echo "$UPDATED" ;;
+        --validate-id-format) validate_id_format "$param1" ;;
+        --version) echo "$VERSION" ;;
+        *) echo "Function '$command' not found."; echo "Type 'man $script' for the manual."; echo "Type '$script --functions' for a list of functions."; return 1 ;;
+    esac
     return 0
 }
 
-export_activities_list(){
+export_activities_csv(){
     local file="${1:-activities_export.csv}"
 
     echo "ID,NAME,DESCRIPTION,ICON" > "$file"
@@ -290,8 +281,24 @@ export_activities_list(){
         local name="$(qdbus6 org.kde.ActivityManager /ActivityManager/Activities ActivityName "$id")"
         local description="$(qdbus6 org.kde.ActivityManager /ActivityManager/Activities ActivityDescription "$id")"
         local icon="$(qdbus6 org.kde.ActivityManager /ActivityManager/Activities ActivityIcon "$id")"
+        name="$(csv_escape "$name")"
+        description="$(csv_escape "$description")"
+        icon="$(csv_escape "$icon")"
         echo "$id,$name,$description,$icon" >> "$file"
     done <<< "$(list_ids)"
+    return 0
+}
+
+export_activities_json(){
+    local file="${1:-activities_export.json}"
+
+    echo "{\"activities\": [" > "$file"
+    while read -r id; do
+        printf '{"id":"%s","name":"%s","description":"%s","icon":"%s"},\n' \
+          "$id" "$name" "$description" "$icon"
+    done <<< "$ids" >> "$file"
+    echo "]}" >> "$file"
+    return 0
 }
 
 functions(){
@@ -301,7 +308,8 @@ functions(){
     echo "(string) --add-activity 'name'"
     echo "(string) --current-id"
     echo "(string) --current-name"
-    echo "(null)   --export-activities-list 'path'"
+    echo "(null)   --export-activities-csv 'path'"
+    echo "(null)   --export-activities-json 'path'"
     echo "(null)   --functions"
     echo "(string) --get-id-by-index 'index'"
     echo "(string) --get-id-by-name 'name'"
@@ -309,6 +317,7 @@ functions(){
     echo "(string) --get-name-by-index 'index'"
     echo "(string) --list-ids"
     echo "(string) --list-names"
+    echo "(string) --meta"
     echo "(null)   --next"
     echo "(null)   --previous"
     echo "(string) --remove-activity 'ID'"
@@ -322,7 +331,9 @@ functions(){
     echo "(null)   --switch-by-id 'ID'"
     echo "(null)   --switch-by-name 'name'"
     echo "(null)   --switch-by-index 'index'"
+    echo "(string) --updated"
     echo "(string) --validate-id-format 'ID'"
+    echo "(string) --version"
 }
 
 get_id_by_index(){
@@ -381,7 +392,7 @@ get_name_by_id(){
 
 get_name_by_index(){
     index="$(trim "$1")"
-    local validate="$(internal_validate_id_format "$index")"
+    local validate="$(internal_validate_index_format "$index")"
     if [[ "$validate" == "Valid index" ]]; then
         local name=""
         local ids=$(list_ids)
@@ -399,6 +410,15 @@ get_name_by_index(){
         command_error "--get-name-by-index" "$validate"
         return 1
     fi
+}
+
+function import_activities(){
+    # Accepts either CSV or JSON files
+    # Creates activities as needed (or overwrite existing activities if the ID or name is exactly the same)
+    # Will assign the names, descriptions, and if possible, the icons
+    local filepath="$1"
+    echo "Function pending. Not implimented into flags."
+    return 2
 }
 
 internal_validate_id_format(){
@@ -601,8 +621,13 @@ slideshow(){
 
     for ((l=1; l<=loops; l++)); do
         for ((a=1; a<=count; a++)); do
-            switch_by_index "$a"
-            sleep "$sleepDelay"
+            local validate="$(switch_by_index "$a")"
+            if [[ "$validate" != "Switch successful" ]]; then
+                echo "--slideshow" "$validate"
+                return 1
+            else
+                sleep "$sleepDelay"
+            fi
         done        
     done
     switch_by_id "$current"
@@ -664,7 +689,7 @@ switch_by_index(){
     local index="$(trim "$1")"
     if [[ "$index" == "" ]]; then
         command_error "--switch-by-index" "No index provided"
-        return1
+        return 1
     else
         local target_id="$(get_id_by_index "$index")"
         if [[ "$target_id" == "" ]]; then
@@ -681,7 +706,7 @@ switch_by_index(){
                 command_error "--switch-by-index" "Switch failed: ID='$target_id', name='$index'"
                 return 1
             else
-                echo "Switch successful: From '$curr_id' to '$target_id'"
+                echo "Switch successful"
                 return 0
             fi
         fi
@@ -692,7 +717,7 @@ switch_by_name(){
     local name="$(trim "$1")"
     if [[ "$name" == "" ]]; then
         command_error "--switch-by-name" "No name provided"
-        return1
+        return 1
     else
         local target_id="$(get_id_by_name "$name")"
         if [[ "$target_id" == "" ]]; then
